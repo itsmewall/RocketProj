@@ -11,7 +11,7 @@ const satellitePosition = new Cesium.Cartesian3(10000000.0, 10000000.0, 10000000
 
 // Adicionar uma entidade representando o objeto espacial
 const satelliteEntity = viewer.entities.add({
-    position: satellitePosition,
+    position: new Cesium.CallbackProperty(() => satellitePosition, false),
     point: {
         pixelSize: 30,
         color: Cesium.Color.YELLOW
@@ -45,6 +45,11 @@ function updateSatellitePosition(time) {
 
     // Adicionar a posição atual à lista de posições
     positions.push(Cesium.Cartesian3.clone(satellitePosition));
+
+    // Limitar o tamanho da trajetória para os últimos 100 pontos
+    if (positions.length > 100) {
+        positions.shift();
+    }
 }
 
 viewer.clock.onTick.addEventListener((clock) => {
