@@ -11,153 +11,118 @@ const viewer = new Cesium.Viewer('cesiumContainer', {
     geocoder: false,
 });
 
-// Definir a lista de posições para a trajetória do foguete e do satélite
-const rocketPositions = [];
-const satellitePositions = [];
+// Lista de satélites brasileiros em operação
+const brazilianSatellites = {
+    "2019-093A": "CBERS 4A",
+    "2019-093G": "FloripaSat-1",
+    "2018-099AE": "ITASAT",
+    "2017-023B": "SGDC",
+    "2014-079A": "CBERS 4",
+    "2014-033Q": "NanoSatC-Br1",
+    "1998-060A": "SCD 2",
+    "1993-009B": "SCD 1",
+    "14079A": "CBERS 4"  // Adicionando também formato curto do COSPAR ID
+};
 
-// Configurar o foguete e o satélite
-const rocketPosition = new Cesium.Cartesian3(0, 0, 0);
-const satellitePosition = new Cesium.Cartesian3(0, 0, 0);
-
-// Adicionar entidade para o foguete
-const rocketEntity = viewer.entities.add({
-    position: new Cesium.CallbackProperty(() => rocketPosition, false),
-    model: {
-        uri: './public/rocket.png',
-        scale: 1.0
-    },
-    label: {
-        text: 'Foguete',
-        font: '14pt sans-serif',
-        fillColor: Cesium.Color.WHITE,
-        outlineColor: Cesium.Color.BLACK,
-        outlineWidth: 2,
-        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-        pixelOffset: new Cesium.Cartesian2(0, -20)
+// Função para obter dados TLE do site fornecido
+async function fetchTLEData() {
+    try {
+        const response = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle');
+        const tleData = await response.text();
+        return tleData;
+    } catch (error) {
+        console.error('Erro ao obter dados TLE:', error);
+        return null;
     }
-});
-
-// Adicionar entidade para o satélite
-const satelliteEntity = viewer.entities.add({
-    position: new Cesium.CallbackProperty(() => satellitePosition, false),
-    model: {
-        uri: './public/satelite.png',
-        scale: 0.5
-    },
-    label: {
-        text: 'Satélite',
-        font: '14pt sans-serif',
-        fillColor: Cesium.Color.WHITE,
-        outlineColor: Cesium.Color.BLACK,
-        outlineWidth: 2,
-        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-        pixelOffset: new Cesium.Cartesian2(0, -20)
-    }
-});
-
-// Adicionar trajetória do foguete
-const rocketTrajectoryEntity = viewer.entities.add({
-    polyline: {
-        positions: new Cesium.CallbackProperty(() => rocketPositions, false),
-        width: 2,
-        material: Cesium.Color.WHITE
-    }
-});
-
-// Adicionar trajetória do satélite
-const satelliteTrajectoryEntity = viewer.entities.add({
-    polyline: {
-        positions: new Cesium.CallbackProperty(() => satellitePositions, false),
-        width: 2,
-        material: Cesium.Color.YELLOW
-    }
-});
-
-// Configurar o relógio para a animação
-viewer.clock.clockRange = Cesium.ClockRange.LOOP_STOP;
-viewer.clock.clockStep = Cesium.ClockStep.SYSTEM_CLOCK_MULTIPLIER;
-viewer.clock.multiplier = 10;
-
-// Variáveis de controle do estágio
-let stage = 0;
-const stageSeparationTime = 30; // Tempo de separação do estágio em segundos
-const satelliteDeploymentTime = 60; // Tempo de implantação do satélite em segundos
-
-// Função para atualizar a posição do foguete e do satélite ao longo do tempo
-function updatePositions(clock) {
-    const time = clock.currentTime;
-    const seconds = Cesium.JulianDate.secondsDifference(time, viewer.clock.startTime);
-
-    // Lançamento e estágios do foguete
-    if (stage === 0) {
-        // Foguete subindo
-        rocketPosition.x = 0;
-        rocketPosition.y = 0;
-        rocketPosition.z = seconds * 500; // Subida linear
-        rocketPositions.push(Cesium.Cartesian3.clone(rocketPosition));
-        if (seconds > stageSeparationTime) {
-            stage = 1; // Separar o estágio
-        }
-    } else if (stage === 1) {
-        // Segundo estágio do foguete
-        rocketPosition.z += 300; // Continuação da subida
-        rocketPositions.push(Cesium.Cartesian3.clone(rocketPosition));
-        if (seconds > satelliteDeploymentTime) {
-            stage = 2; // Implantar o satélite
-        }
-    } else if (stage === 2) {
-        // Implantar o satélite
-        satellitePosition.x = rocketPosition.x;
-        satellitePosition.y = rocketPosition.y;
-        satellitePosition.z = rocketPosition.z;
-        satellitePositions.push(Cesium.Cartesian3.clone(satellitePosition));
-        stage = 3; // Finalizar a implantação do satélite
-    } else if (stage === 3) {
-        // Satélite em órbita
-        const angle = (seconds - satelliteDeploymentTime) * 0.1;
-        satellitePosition.x = 10000000.0 * Math.cos(angle);
-        satellitePosition.y = 10000000.0 * Math.sin(angle);
-        satellitePosition.z = 10000000.0 * Math.sin(angle * 0.5);
-        satellitePositions.push(Cesium.Cartesian3.clone(satellitePosition));
-    }
-
-    // Atualizar informações no painel
-    updateInfoPanel(seconds, rocketPosition, satellitePosition);
 }
 
-viewer.clock.onTick.addEventListener((clock) => {
-    updatePositions(clock);
-});
+// Função para processar dados TLE e criar entidades no Cesium
+function processTLEData(tleData) {
+    if (!tleData) {
+        console.error('Nenhum dado TLE foi obtido.');
+        return;
+    }
+
+    const tleLines = tleData.split('\n');
+    for (let i = 0; i < tleLines.length; i += 3) {
+        const name = tleLines[i].trim();
+        const tleLine1 = tleLines[i + 1]?.trim();
+        const tleLine2 = tleLines[i + 2]?.trim();
+        
+        // Ignorar satélites Starlink
+        if (name.includes("STARLINK")) {
+            continue;
+        }
+
+        if (name && tleLine1 && tleLine2) {
+            const cosparId = tleLine1.split(" ")[1].trim();
+            console.log(`Processando ${name} com COSPAR ID ${cosparId}`);
+            if (brazilianSatellites[cosparId]) {
+                console.log(`Satélite brasileiro encontrado: ${brazilianSatellites[cosparId]}`);
+                const satrec = satellite.twoline2satrec(tleLine1, tleLine2);
+                createSatelliteEntity(brazilianSatellites[cosparId], satrec);
+            } else {
+                console.log(`COSPAR ID ${cosparId} não encontrado na lista de satélites brasileiros.`);
+            }
+        } else {
+            console.error('Erro ao processar linha TLE:', tleLines[i], tleLines[i + 1], tleLines[i + 2]);
+        }
+    }
+}
+
+// Função para criar entidades de satélite no Cesium
+function createSatelliteEntity(name, satrec) {
+    const positionProperty = new Cesium.SampledPositionProperty();
+    
+    const satelliteEntity = viewer.entities.add({
+        name: name,
+        position: positionProperty,
+        point: {
+            pixelSize: 10,
+            color: Cesium.Color.YELLOW
+        },
+        label: {
+            text: name,
+            font: '14pt sans-serif',
+            fillColor: Cesium.Color.WHITE,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 2,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            pixelOffset: new Cesium.Cartesian2(0, -20)
+        }
+    });
+
+    function updatePosition() {
+        const now = new Date();
+        const positionAndVelocity = satellite.propagate(satrec, now);
+        const positionEci = positionAndVelocity.position;
+        const gmst = satellite.gstime(now);
+        const positionGd = satellite.eciToGeodetic(positionEci, gmst);
+        const longitude = positionGd.longitude * 180 / Math.PI;
+        const latitude = positionGd.latitude * 180 / Math.PI;
+        const height = positionGd.height * 1000;
+
+        const position = Cesium.Cartesian3.fromDegrees(longitude, latitude, height);
+        positionProperty.addSample(Cesium.JulianDate.fromDate(now), position);
+
+        setTimeout(updatePosition, 1000);
+    }
+
+    updatePosition();
+}
+
+// Inicializar a visualização de satélites
+async function initializeSatellites() {
+    const tleData = await fetchTLEData();
+    console.log('Dados TLE obtidos:', tleData ? tleData.slice(0, 500) + '...' : 'Erro ao obter dados TLE');
+    processTLEData(tleData);
+}
 
 // Configurar a visão inicial para uma visão ampla do planeta
 viewer.scene.camera.setView({
     destination: Cesium.Cartesian3.fromDegrees(0, 0, 20000000),
 });
 
-// Função para seguir o satélite
-function followSatellite() {
-    viewer.trackedEntity = satelliteEntity;
-}
-
-document.getElementById('followSatelliteButton').addEventListener('click', followSatellite);
-
-// Função para atualizar o painel de informações
-function updateInfoPanel(seconds, rocketPosition, satellitePosition) {
-    const timeElement = document.getElementById('time');
-    const rocketPositionElement = document.getElementById('rocketPosition');
-    const satellitePositionElement = document.getElementById('satellitePosition');
-    
-    if (timeElement && rocketPositionElement && satellitePositionElement) {
-        timeElement.textContent = seconds.toFixed(2) + ' s';
-        rocketPositionElement.textContent = `Foguete - X: ${rocketPosition.x.toFixed(2)}, Y: ${rocketPosition.y.toFixed(2)}, Z: ${rocketPosition.z.toFixed(2)}`;
-        satellitePositionElement.textContent = `Satélite - X: ${satellitePosition.x.toFixed(2)}, Y: ${satellitePosition.y.toFixed(2)}, Z: ${satellitePosition.z.toFixed(2)}`;
-    }
-}
-
-// Função para atualizar o nome do satélite
-function updateSatelliteName() {
-    const newName = document.getElementById('satelliteName').value;
-    satelliteEntity.label.text = newName;
-}
+// Iniciar a visualização de satélites
+initializeSatellites();

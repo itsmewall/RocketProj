@@ -27,23 +27,8 @@
 </head>
 <body>
     <div id="cesiumContainer"></div>
-    <div id="controlPanel">
-        <h2>Painel de Controle</h2>
-        <label for="satelliteName">Nome do Satélite:</label>
-        <input type="text" id="satelliteName" value="Satélite 1">
-        <button onclick="updateSatelliteName()">Atualizar Nome</button>
-        <br><br>
-        <label for="multiplier">Multiplicador de Tempo:</label>
-        <input type="number" id="multiplier" value="60" step="10" min="1">
-        <button onclick="updateMultiplier()">Atualizar</button>
-        <br><br>
-        <button id="followSatelliteButton">Seguir Satélite</button>
-        <h3>Informações do Lançamento</h3>
-        <p>Tempo: <span id="time">0 s</span></p>
-        <p>Posição do Foguete: <span id="rocketPosition">X: 0, Y: 0, Z: 0</span></p>
-        <p>Posição do Satélite: <span id="satellitePosition">X: 0, Y: 0, Z: 0</span></p>
-    </div>
     <script src="/Cesium/Cesium.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/3.0.1/satellite.min.js"></script>
     <script src="/src/main.js"></script>
     <script>
         function updateMultiplier() {
